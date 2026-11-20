@@ -226,6 +226,7 @@ modules:
     from: builder
     src: /tmp/bin/
     dest: /usr/bin/
+<<<<<<< HEAD:recipes/remix.yml
   - type: copy
     from: builder
     src: /tmp/skel/
@@ -238,6 +239,19 @@ modules:
   - type: systemd
     system:
       enabled:
+=======
+  - type: containerfile
+    snippets:
+      - COPY --from=driver-builder /usr/lib/modules/ /usr/lib/modules/
+      - COPY --from=driver-builder /var/lib/dkms/ /var/lib/dkms/
+      - RUN systemctl enable zfs.target zfs-import-scan.service zfs-mount.service
+  - type: systemd
+    system:
+      enabled:
+        - tailscaled.service
+        - firewalld.service
+        - sddm.service
+>>>>>>> 08342762ddb1469fac77020348af5e06ef41745f:recipes/bella-test.yml
         - virtqemud.socket
         - virtnetworkd.socket
         - virtnodedevd.socket
