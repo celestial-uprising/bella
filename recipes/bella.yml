@@ -1,0 +1,316 @@
+name: lamuella
+description: Celestial Uprising's Immutable Operating System
+base-image: quay.io/fedora/fedora-bootc
+image-version: 44
+stages:
+  - name: driver-builder
+    from: quay.io/fedora/fedora-bootc:44
+    modules:
+      - type: containerfile
+        snippets:
+          - RUN dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+          - RUN dnf install -y https://zfsonlinux.org/fedora/zfs-release-3-1.fc44.noarch.rpm
+          - RUN export KVER=$(cd /usr/lib/modules && echo *) && dnf install -y zfs-dkms
+          - RUN export KVER=$(cd /usr/lib/modules && echo *) && dkms autoinstall -k $KVER && dnf clean all
+  - name: aocc-rpm-builder
+    from: quay.io/fedora/fedora:44
+    modules:
+      - type: script
+        snippets:
+          - dnf5 upgrade -y
+          - dnf5 install -y rpm-build rpmdevtools dnf5-plugins createrepo_c zstd tar curl xz gcc libquadmath
+          - mkdir -p /opt/aocc /var/tmp/srpms /var/tmp/aocc-rpms
+      - type: files
+        files:
+          - source: aoccv6/
+            destination: /tmp/
+      - type: script
+        scripts:
+          - aoccv6.sh    
+      - type: script
+        snippets:
+          - |
+            export PATH="/opt/aocc/bin:${PATH}"
+            export CC=clang
+            export CXX=clang++
+            export LD=ld.lld
+            cat << 'EOF' > /etc/rpm/macros.znver3-aocc
+            %_arch_optflags -O3 -march=znver3 -mtune=znver3 -flto=thin -pipe -fuse-ld=lld
+            %optflags %{_arch_optflags} -Wall -Werror=format-security -Wp,-D_FORTIFY_SOURCE=3 -fexceptions -fstack-protector-strong
+            %__cc clang
+            %__cxx clang++
+            %__ld ld.lld
+            EOF
+          - |
+            # Rebuild high-impact RPMs & deps with AOCC (-march=znver3 -O3 -flto=thin)
+            # Keep per-package fallback so one strict LLVM warning doesn't abort the stage
+            AOCC_PKGS="mesa-vulkan-drivers pipewire wireplumber zstd lz4 mpv ffmpeg waybar rofi-wayland kitty"
+            for pkg in ${AOCC_PKGS}; do
+              echo "=== AOCC znver3 build: ${pkg} ==="
+              if dnf5 download --source --destdir /var/tmp/srpms "${pkg}" && \
+                 dnf5 builddep -y "/var/tmp/srpms/${pkg}"*.src.rpm && \
+                 rpmbuild --rebuild \
+                   --define "_rpmdir /var/tmp/aocc-rpms" \
+                   "/var/tmp/srpms/${pkg}"*.src.rpm; then
+                echo "OK: ${pkg}"
+              else
+                echo "WARN: ${pkg} failed under AOCC; skipping custom RPM"
+                rm -f "/var/tmp/srpms/${pkg}"*.src.rpm
+              fi
+            done
+          - createrepo_c /var/tmp/aocc-rpms
+  - name: builder
+    from: quay.io/fedora/fedora:44
+    modules:
+      - type: copy
+        src: files/scripts/stage/*
+        dest: /tmp/
+      - type: script
+        snippets:
+          - mkdir -p /tmp/bin
+          - dnf5 upgrade -y
+          - |
+            bash /tmp/stage.sh
+            bash /tmp/pi-bolt.sh
+modules:
+  - type: os-release
+    properties:
+      NAME: "Lamuella"
+      PRETTY_NAME: "Lamuella c01 by Celestial Uprising"
+      VERSION_CODENAME: "zen"
+      ID_LIKE: fedora
+      HOME_URL: "https://github.com/celestial-uprising/lamuella/"
+      BUG_REPORT_URL: "https://github.com/celestial-uprising/lamuella/"
+      VARIANT: "lamuella"
+      RELEASE_TYPE: "alpha"
+  - type: kargs
+    kargs:
+      - pcie_aspm=off
+      - amd_iommu=on
+      - iommu=pt
+      - kvm_amd.nested=1
+      - split_lock_detect=off
+      - transparent_hugepage=always
+      - kvm.ignore_msrs=1
+      - net.ifnames=0
+  - type: copy
+    from: aocc-rpm-builder
+    src: /var/tmp/aocc-rpms/
+    dest: /var/tmp/local-aocc-repo/
+  - type: containerfile
+    snippets:
+      - RUN dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+      - RUN dnf install -y https://zfsonlinux.org/fedora/zfs-release-3-1.fc44.noarch.rpm
+      - RUN printf '[oglaroon-znver3-aocc]\nname=Lamuella AOCC znver3 RPMs\nbaseurl=file:///var/tmp/local-aocc-repo\nenabled=1\ngpgcheck=0\npriority=1\n' > /etc/yum.repos.d/oglaroon-znver3-aocc.repo
+  - type: dnf
+    repos:
+      copr:
+        - scottames/voxtype
+        - archjun/mgba
+    install:
+      install-weak-deps: false
+      packages:
+        - rustup
+        - libquadmath
+        - libquadmath-devel
+        - zfs
+        - mpv
+        - chromium-headless
+        - distcc
+        - ccache
+        - smartmontools
+        - ov
+        - gh
+        - firewalld
+        - zram-generator-defaults
+        - glibc-langpack-en
+        - podman-compose
+        - podman-docker
+        - podman-remote
+        - buildah
+        - sysstat
+        - strace
+        - tcpdump
+        - whois
+        - distrobox
+        - sshfs
+        - rsync
+        - pciutils
+        - usbutils
+        - kernel-modules-extra
+        - tailscale
+        - libvirt-client
+        - vim
+        - nmap
+        - traceroute
+        - uv
+        - neovim
+        - python3-neovim
+        - luarocks
+        - tree-sitter-cli
+        - fd-find
+        - ripgrep
+        - zoxide
+        - bat
+        - eza
+        - fzf
+        - pdfgrep
+        - powertop
+        - nvtop
+        - radeontop
+        - s-tui
+        - lm_sensors
+        - btop
+        - gdu
+        - pastel
+        - git
+        - wget
+        - plymouth-theme-spinner
+        - nodejs
+        - npm
+        - wtype
+        - voxtype
+        - waybar
+        - loupe
+        - clapper
+        - mgba-qt
+        - nautilus
+        - gtk4
+        - gtk4-layer-shell
+        - google-noto-sans-fonts
+        - google-noto-serif-fonts
+        - niri
+        - xwayland-satellite
+        - upower
+        - spice-vdagent
+        - spice-webdavd
+        - pipewire
+        - mesa-vulkan-drivers
+        - gnome-keyring
+        - alsa-sof-firmware
+        - bluez-libs
+        - pulseaudio-libs
+        - sddm
+        - xdg-desktop-portal-gnome
+        - xdg-desktop-portal-gtk
+        - xfce-polkit
+        - rofi-wayland
+        - dunst
+        - swaybg
+        - swaylock
+        - swayidle
+        - wl-clipboard
+        - grim
+        - slurp
+        - brightnessctl
+        - pamixer
+        - pavucontrol
+        - wlr-randr
+        - wlsunset
+        - kanshi
+        - network-manager-applet
+        - blueman
+        - bluez-tools
+        - google-noto-emoji-fonts
+        - qt6-qtvirtualkeyboard
+        - qt6-qt5compat
+        - kitty
+        - zathura
+        - zathura-plugins-all
+        - remmina
+        - virt-manager
+        - headsetcontrol
+        - mediainfo
+        - playerctl
+        - tuned-ppd
+        - vulkan-validation-layers
+        - vulkan-tools
+        - alsa-firmware
+        - wireplumber
+        - flatpak
+        - libpcap
+        - qemu-system-x86
+        - qemu-system-aarch64
+        - edk2-aarch64
+        - qemu-system-riscv
+        - qemu-img
+        - qemu-audio-pipewire
+        - virglrenderer
+        - qemu-device-display-virtio-gpu-gl
+        - qemu-ui-opengl
+        - qemu-audio-spice
+        - qemu-char-spice
+        - qemu-device-display-qxl
+        - spice-gtk
+        - libguestfs-tools
+        - virt-install
+        - virt-top
+        - libvirt
+        - libvirt-daemon-qemu
+        - libvirt-daemon-driver-secret
+        - libvirt-daemon-driver-nodedev
+        - libvirt-daemon-driver-interface
+        - libvirt-daemon-driver-nwfilter
+        - libvirt-daemon-config-network
+        - libvirt-daemon-driver-network
+        - libvirt-daemon-driver-storage
+        - libvirt-daemon-driver-storage-zfs
+  - type: files
+    files:
+      - source: aoccv6/
+        destination: /tmp/
+  - type: script
+    scripts:
+      - aoccv6.sh    
+  - type: fonts
+    fonts:
+      nerd-fonts:
+        - VictorMono
+        - JetBrainsMono
+  - type: files
+    files:
+      - source: etc/
+        destination: /etc/
+      - source: usr/
+        destination: /usr/
+  - type: copy
+    from: builder
+    src: /tmp/bin/
+    dest: /usr/bin/
+  - type: copy
+    from: builder
+    src: /tmp/skel/
+    dest: /etc/skel/
+  - type: containerfile
+    snippets:
+      - COPY --from=driver-builder /usr/lib/modules/ /usr/lib/modules/
+      - COPY --from=driver-builder /var/lib/dkms/ /var/lib/dkms/
+      - RUN systemctl enable zfs.target zfs-import-scan.service zfs-mount.service
+  - type: systemd
+    system:
+      enabled:
+        - tailscaled.service
+        - firewalld.service
+        - iwd.service
+        - fix-wifi-race.service
+        - sddm.service
+        - virtqemud.socket
+        - virtnetworkd.socket
+        - virtnodedevd.socket
+        - virtsecretd.socket
+        - virtstoraged.socket
+        - virtqemud.service
+    user:
+      enabled:
+        - podman.socket
+  - type: containerfile
+    snippets:
+      - RUN dnf remove -y rpmfusion-free-release rpmfusion-nonfree-release && rm -f /etc/yum.repos.d/rpmfusion*.repo && dnf clean all
+  - type: script
+    scripts:
+      - twilight.sh
+      - bash-completion-helper.sh
+      - annoy.sh
+      - regenerateinitramfs.sh
+  - type: wayblue-signing
+    source: local
