@@ -1,70 +1,90 @@
 #!/usr/bin/env bash
 set -oue pipefail
 
-TARGET_TRIPLE="x86_64-unknown-linux-gnu"
-export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-cpu=znver3 -C link-arg=-fuse-ld=lld"
-export CFLAGS="-O3 -march=znver3 -mtune=znver3 -flto=thin -pipe"
-export CXXFLAGS="-O3 -march=znver3 -mtune=znver3 -flto=thin -pipe"
-export OPENSSL_NO_VENDOR=1
-export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
-
 mkdir -p /tmp/bin
 
 # ==============================================================================
 # Shared Build Toolchain
 # ==============================================================================
 dnf5 install -y \
-        cargo \
-        rustc \
-        clang \
-        lld \
-        gcc \
-        gcc-c++ \
-        make \
-        cmake \
-        git \
-        curl \
-        tar \
-        gzip \
-        pkgconf-pkg-config
+  cargo \
+  rustc \
+  clang \
+  llvm \
+  lld \
+  gcc \
+  gcc-c++ \
+  make \
+  cmake \
+  git \
+  curl \
+  tar \
+  gzip \
+  pkgconf-pkg-config
+
+TARGET_TRIPLE="x86_64-unknown-linux-gnu"
+export CC=clang
+export CXX=clang++
+export AR=llvm-ar
+export RANLIB=llvm-ranlib
+export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-C target-cpu=znver3 -C link-arg=-fuse-ld=lld"
+export OPENSSL_NO_VENDOR=1
+export LIBSQLITE3_SYS_USE_PKG_CONFIG=1
+
+ZEN3_C_FLAGS="-O3 -march=znver3 -mtune=znver3 -flto=thin -pipe"
+export CFLAGS_x86_64_unknown_linux_gnu="${ZEN3_C_FLAGS}"
+export CXXFLAGS_x86_64_unknown_linux_gnu="${ZEN3_C_FLAGS}"
 
 cargo_build() {
   cargo install --root /tmp --locked --target "${TARGET_TRIPLE}" "$@"
 }
 
+# Helper for crates pulling in aws-lc-sys / jitterentropy (which requires -O0 on jitterentropy-base.c)
+cargo_build_no_c_opt() {
+  (
+    unset CFLAGS CXXFLAGS CFLAGS_x86_64_unknown_linux_gnu CXXFLAGS_x86_64_unknown_linux_gnu
+    export CFLAGS_x86_64_unknown_linux_gnu="-march=znver3 -mtune=znver3 -pipe"
+    export CXXFLAGS_x86_64_unknown_linux_gnu="-march=znver3 -mtune=znver3 -pipe"
+    cargo_build "$@"
+  )
+}
+
 # ==============================================================================
-# Rust Crates (from binstall-rhi + extra crates list)
+# Rust Crates (Full -O3 -march=znver3 -flto=thin C/C++ flags)
 # ==============================================================================
 dnf5 install -y \
-        libxcb-devel \
-        openssl-devel \
-        dbus-devel \
-        sqlite-devel \
-        alsa-lib-devel \
-        jack-audio-connection-kit-devel \
-        libpcap-devel
+  libxcb-devel \
+  openssl-devel \
+  dbus-devel \
+  libsmbclient-devel \
+  sqlite-devel \
+  alsa-lib-devel \
+  jack-audio-connection-kit-devel \
+  libpcap-devel
 
 for crate in \
-        kmon \
-        viddy \
-        xan \
-        doxx \
-        xleak \
-        croft-software \
-        eilmeldung \
-        elio \
-        termscp \
-        papr-tui \
-        wrkflw \
-        serie \
-        upmd \
-        herdr \
-        llmfit \
-        reknife \
-        edamame \
-        llamastash; do
+  kmon \
+  viddy \
+  xan \
+  doxx \
+  xleak \
+  croft-software \
+  elio \
+  termscp \
+  papr-tui \
+  wrkflw \
+  serie \
+  upmd \
+  herdr \
+  llmfit \
+  reknife \
+  edamame \
+  llamastash; do
   cargo_build "${crate}"
 done
+
+# Crates pulling in aws-lc-sys / jitterentropy (avoids overriding crate's required -O0)
+cargo_build_no_c_opt eilmeldung
 
 # Git-sourced Rust tools (explicit --target so host build scripts stay safe)
 cargo_build --git https://github.com/DingoOz/llm-visuals

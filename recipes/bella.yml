@@ -18,7 +18,7 @@ stages:
       - type: script
         snippets:
           - dnf5 upgrade -y
-          - dnf5 install -y rpm-build rpmdevtools dnf5-plugins createrepo_c zstd tar curl xz gcc libquadmath
+          - dnf5 install -y rpm-build rpmdevtools dnf5-plugins createrepo_c zstd tar curl xz gcc libquadmath ncurses
           - mkdir -p /opt/aocc /var/tmp/srpms /var/tmp/aocc-rpms
       - type: files
         files:
@@ -30,7 +30,7 @@ stages:
       - type: script
         snippets:
           - |
-            export PATH="/opt/aocc/bin:${PATH}"
+            export PATH="/opt/AMD/aocc-compiler-6.0.0/bin:${PATH}"
             export CC=clang
             export CXX=clang++
             export LD=ld.lld
@@ -277,10 +277,6 @@ modules:
     from: builder
     src: /tmp/bin/
     dest: /usr/bin/
-  - type: copy
-    from: builder
-    src: /tmp/skel/
-    dest: /etc/skel/
   - type: containerfile
     snippets:
       - COPY --from=driver-builder /usr/lib/modules/ /usr/lib/modules/
@@ -291,8 +287,6 @@ modules:
       enabled:
         - tailscaled.service
         - firewalld.service
-        - iwd.service
-        - fix-wifi-race.service
         - sddm.service
         - virtqemud.socket
         - virtnetworkd.socket
@@ -309,8 +303,5 @@ modules:
   - type: script
     scripts:
       - twilight.sh
-      - bash-completion-helper.sh
       - annoy.sh
       - regenerateinitramfs.sh
-  - type: wayblue-signing
-    source: local
