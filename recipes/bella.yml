@@ -18,7 +18,7 @@ stages:
       - type: script
         snippets:
           - dnf5 upgrade -y
-          - dnf5 install -y rpm-build rpmdevtools dnf5-plugins createrepo_c zstd tar curl xz gcc libquadmath
+          - dnf5 install -y rpm-build rpmdevtools dnf5-plugins createrepo_c zstd tar curl xz gcc libquadmath ncurses
           - mkdir -p /opt/aocc /var/tmp/srpms /var/tmp/aocc-rpms
       - type: files
         files:
