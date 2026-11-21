@@ -3,4 +3,4 @@ description: Celestial Uprising's Immutable Operating System
 base-image: ghcr.io/celestial-uprising/bella
 image-version: latest
 modules:
-  - type: signed
+  - type: signing
