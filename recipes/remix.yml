@@ -62,7 +62,6 @@ modules:
         - scottames/voxtype
         - archjun/mgba
     install:
-      install-weak-deps: false
       packages:
         - rustup
         - libquadmath

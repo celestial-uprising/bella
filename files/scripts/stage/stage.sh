@@ -70,14 +70,12 @@ for crate in \
   xleak \
   croft-software \
   elio \
-  termscp \
   papr-tui \
   wrkflw \
   serie \
   upmd \
   herdr \
   llmfit \
-  reknife \
   edamame \
   llamastash; do
   cargo_build "${crate}"
@@ -89,7 +87,6 @@ cargo_build_no_c_opt eilmeldung
 # Git-sourced Rust tools (explicit --target so host build scripts stay safe)
 cargo_build --git https://github.com/DingoOz/llm-visuals
 cargo_build --git https://github.com/graiz/kittybrowser
-cargo_build --git https://github.com/netop/netop || cargo_build --git https://github.com/DingoOz/netop || true
 cargo_build --git https://gitlab.com/snipedbywifi/terminactory
 
 # ALSA/JACK audio tool
@@ -143,7 +140,6 @@ go_build github.com/jesseduffield/lazygit@latest
 go_build github.com/charmbracelet/glow/v2@latest
 go_build github.com/chojs23/ec/cmd/ec@latest
 go_build github.com/alvinunreal/lazyskills/cmd/lazyskills@latest
-go_build github.com/edoardottt/cariddi/cmd/cariddi@latest
 go_build github.com/yutat23/lsoff@latest
 go_build github.com/Ri4dH/failtrace/cmd/failtrace@latest
 go_build github.com/pedrosousa13/onda@latest
